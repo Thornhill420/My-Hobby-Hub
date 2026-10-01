@@ -6,6 +6,8 @@ import DriveSettings from './components/DriveSettings.jsx'
 import { v4 as uuidv4 } from 'uuid'
 import {
   isDriveConnected,
+  isTokenExpired,
+  renewAccessToken,
   syncProjectToDrive,
   loadSharedState,
   saveSharedState,
@@ -68,6 +70,7 @@ export default function App() {
     isDriveConnected() ? 'loading' : 'local'
   )
   const [syncError, setSyncError] = useState('')
+  const [renewing, setRenewing] = useState(false)
 
   const projectsRef = useRef(projects)
   const deletionsRef = useRef(deletions)
@@ -178,6 +181,32 @@ export default function App() {
     },
     [pushToDrive]
   )
+
+  // Google access tokens last about an hour and browser apps get no refresh
+  // tokens, so renewal must happen from a click ("Renew access" in the red
+  // bar). Consent was already granted, so this usually needs no interaction.
+  const renewAndSync = useCallback(async () => {
+    setRenewing(true)
+    try {
+      await renewAccessToken()
+      setSyncError('')
+      await syncWithDrive({ allowImport: true })
+    } catch (error) {
+      console.error('Token renewal failed', error)
+      setSyncStatus('error')
+      setSyncError(error.message)
+    } finally {
+      setRenewing(false)
+    }
+  }, [syncWithDrive])
+
+  const handleRetry = useCallback(async () => {
+    if (isTokenExpired()) {
+      await renewAndSync()
+      return
+    }
+    await syncWithDrive({ allowImport: true })
+  }, [renewAndSync, syncWithDrive])
 
   // Initial sync when logged in, and again whenever Drive is (re)connected.
   useEffect(() => {
@@ -313,6 +342,10 @@ export default function App() {
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId) || null
 
+  const needsRenewal =
+    syncStatus === 'error' &&
+    (isTokenExpired() || /session has expired/i.test(syncError))
+
   if (!authenticated) {
     return <AuthGate onAuthenticated={() => setAuthenticated(true)} />
   }
@@ -357,9 +390,19 @@ export default function App() {
             ⚠️ Sync error: {syncError || 'unknown error'}
           </span>
           <span className="sync-error-actions">
+            {needsRenewal && (
+              <button
+                className="btn btn-small btn-primary"
+                onClick={renewAndSync}
+                disabled={renewing}
+              >
+                {renewing ? 'Renewing…' : 'Renew access'}
+              </button>
+            )}
             <button
               className="btn btn-small btn-secondary"
-              onClick={() => syncWithDrive({ allowImport: true })}
+              onClick={handleRetry}
+              disabled={renewing}
             >
               Retry
             </button>

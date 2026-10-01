@@ -121,28 +121,15 @@ export async function connectDrive(clientId, { loginHint = '' } = {}) {
   }
 
   // Show the account chooser (people often have several Google accounts
-  // signed in) AND the consent screen in one popup — Google only issues the
-  // refresh token we need when consent is shown. login_hint preselects the
-  // account the user typed.
-  const first = await requestAccessToken(id, {
+  // signed in) AND the consent screen in one popup. login_hint preselects
+  // the account the user typed. Google's browser token flow does not issue
+  // refresh tokens, so sessions are renewed via renewAccessToken() below.
+  const response = await requestAccessToken(id, {
     prompt: 'select_account consent',
     ...(hint ? { login_hint: hint } : {}),
   })
-  storeTokenResponse(first)
-  if (first.refresh_token) return first
-
-  // Very old/odd responses can omit the refresh token; retry once.
-  try {
-    const second = await requestAccessToken(id, {
-      prompt: 'consent',
-      ...(hint ? { login_hint: hint } : {}),
-    })
-    storeTokenResponse(second)
-    return second
-  } catch (error) {
-    console.warn('Connected without a refresh token', error)
-    return first
-  }
+  storeTokenResponse(response)
+  return response
 }
 
 export function disconnectDrive() {
@@ -151,6 +138,28 @@ export function disconnectDrive() {
   localStorage.removeItem(TOKEN_EXPIRY_KEY)
   localStorage.removeItem(ROOT_FOLDER_ID_KEY)
   localStorage.removeItem(EMAIL_KEY)
+}
+
+export function isTokenExpired() {
+  const expiry = Number(localStorage.getItem(TOKEN_EXPIRY_KEY) || 0)
+  return Date.now() >= expiry - 60000
+}
+
+// Google's browser token flow never returns refresh tokens, so an expired
+// access token must be re-requested from a user-driven event (a button
+// click). With prompt: '' and a still-valid Google session + prior consent
+// this usually completes without any interaction.
+export async function renewAccessToken() {
+  const clientId = localStorage.getItem(CLIENT_ID_KEY)
+  if (!clientId) {
+    throw new Error(
+      'No saved Client ID. Open ☁️ Drive settings and connect again.'
+    )
+  }
+  await loadGoogleScripts()
+  const response = await requestAccessToken(clientId, { prompt: '' })
+  storeTokenResponse(response)
+  return response
 }
 
 export async function getValidAccessToken() {
@@ -166,7 +175,7 @@ export async function getValidAccessToken() {
 
   if (!refreshToken || !clientId) {
     throw new Error(
-      'Your Google session has expired and cannot renew itself. Open ☁️ Drive settings, click Disconnect, then Connect again.'
+      'Your Google session has expired. Click "Renew access" to sign in again.'
     )
   }
 

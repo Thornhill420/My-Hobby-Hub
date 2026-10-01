@@ -5,11 +5,14 @@ import {
   getStoredClientId,
   getStoredEmail,
   getStoredLoginHint,
-  hasStoredRefreshToken,
   isDriveConnected,
 } from '../utils/googleDrive.js'
 
-const DEFAULT_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
+// Client IDs are public by design (they appear in every auth request), so
+// baking the project's own ID in just pre-fills the field on new devices.
+const DEFAULT_CLIENT_ID =
+  import.meta.env.VITE_GOOGLE_CLIENT_ID ||
+  '752853345647-fcjd2532kot2j0ubd8v86c04rm36bmtf.apps.googleusercontent.com'
 
 function connectErrorHint(message) {
   const m = message.toLowerCase()
@@ -92,15 +95,12 @@ export default function DriveSettings({ onClose, onStatusChange }) {
             <strong>same Client ID</strong> and the same Google account.
           </p>
           <p className="drive-hint">
-            Session renewal:{' '}
-            {hasStoredRefreshToken() ? (
-              <strong>automatic — stays signed in</strong>
-            ) : (
-              <strong>
-                not available — this session lasts about an hour, then you must
-                reconnect
-              </strong>
-            )}
+            Session:{' '}
+            <strong>
+              Google access lasts about an hour — when it runs out, click
+              "Renew access" in the red bar that appears. No need to
+              disconnect.
+            </strong>
           </p>
           <button className="btn btn-danger" onClick={handleDisconnect}>
             Disconnect
