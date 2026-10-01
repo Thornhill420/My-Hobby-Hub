@@ -6,8 +6,32 @@ import {
   isDriveConnected,
 } from '../utils/googleDrive.js'
 
+const DEFAULT_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
+
+function connectErrorHint(message) {
+  const m = message.toLowerCase()
+  if (m.includes('popup')) return '' // already a friendly message
+  if (
+    m.includes('origin') ||
+    m.includes('invalid_client') ||
+    m.includes('unauthorized')
+  ) {
+    return "This site's address isn't allowed for this Client ID. In Google Cloud Console go to APIs & Services → Credentials → your OAuth client and add this site's URL under Authorized JavaScript origins."
+  }
+  if (
+    m.includes('denied') ||
+    m.includes('blocked') ||
+    m.includes('verification')
+  ) {
+    return 'Google blocked that account. If your OAuth consent screen is in Testing mode, add the account you picked under APIs & Services → OAuth consent screen → Test users, then try again.'
+  }
+  return ''
+}
+
 export default function DriveSettings({ onClose, onStatusChange }) {
-  const [clientId, setClientId] = useState(getStoredClientId() || '')
+  const [clientId, setClientId] = useState(
+    getStoredClientId() || DEFAULT_CLIENT_ID || ''
+  )
   const [connected, setConnected] = useState(isDriveConnected())
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -17,7 +41,7 @@ export default function DriveSettings({ onClose, onStatusChange }) {
     setError('')
     setLoading(true)
     try {
-      await connectDrive(clientId, 'consent')
+      await connectDrive(clientId)
       setConnected(true)
       onStatusChange?.(true)
     } catch (err) {
@@ -49,8 +73,13 @@ export default function DriveSettings({ onClose, onStatusChange }) {
             Drive
           </p>
           <p className="drive-hint">
-            Projects can now be uploaded to a <strong>Hobby Hub</strong> folder
-            in your Drive.
+            Your project list lives in <strong>Hobby Hub/projects.json</strong>{' '}
+            in your Drive and syncs automatically: changes made on any device
+            show up on the others.
+          </p>
+          <p className="drive-hint">
+            To share with another device, connect there with the{' '}
+            <strong>same Client ID</strong> and the same Google account.
           </p>
           <button className="btn btn-danger" onClick={handleDisconnect}>
             Disconnect
@@ -69,6 +98,9 @@ export default function DriveSettings({ onClose, onStatusChange }) {
             placeholder="xxxxxx.apps.googleusercontent.com"
           />
           {error && <div className="form-error">{error}</div>}
+          {error && connectErrorHint(error) && (
+            <div className="drive-hint">{connectErrorHint(error)}</div>
+          )}
           <button
             className="btn btn-primary"
             onClick={handleConnect}
@@ -76,6 +108,10 @@ export default function DriveSettings({ onClose, onStatusChange }) {
           >
             {loading ? 'Connecting…' : 'Connect Google Drive'}
           </button>
+          <p className="drive-hint">
+            Google will ask which account to use — pick the account you want
+            your projects stored in.
+          </p>
 
           <button
             type="button"
@@ -104,8 +140,11 @@ export default function DriveSettings({ onClose, onStatusChange }) {
               </li>
               <li>
                 Open <strong>OAuth consent screen</strong> and configure it for
-                external (or internal) users. Add your Google account as a test
-                user.
+                external (or internal) users. Under{' '}
+                <strong>Test users</strong>, add{' '}
+                <strong>every Google account</strong> you will sign in with on
+                any device — accounts that are not on that list get an
+                "Access blocked" screen.
               </li>
               <li>
                 Go to <strong>Credentials → Create Credentials → OAuth client
@@ -114,7 +153,10 @@ export default function DriveSettings({ onClose, onStatusChange }) {
               <li>Choose <strong>Web application</strong>.</li>
               <li>
                 Under <strong>Authorized JavaScript origins</strong>, add:
-                <code>http://localhost:5173</code>
+                <code>http://localhost:5173</code> and{' '}
+                <code>https://thornhill420.github.io</code>. Use the{' '}
+                <strong>same Client ID on every device</strong> you want to
+                share projects with.
               </li>
               <li>Copy the Client ID and paste it above.</li>
             </ol>

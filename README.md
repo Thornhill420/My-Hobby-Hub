@@ -7,8 +7,9 @@ A personal React site for storing all your 3D printing, Arduino, ESP32, apps, pr
 - Add, edit and delete projects
 - Store images, files (PDF, .ino, .zip, etc.) and resource links
 - Tech-style dark UI with neon accents
-- Data is saved in your browser's `localStorage`
-- Optional Google Drive sync: uploads each project to a neatly labelled folder structure
+- A local `localStorage` cache so the app works offline
+- Google Drive sync: the shared project list lives in your Drive, so every
+  device you connect sees the same projects (additions, edits and deletions)
 
 ## Getting Started
 
@@ -37,22 +38,55 @@ The build output will be in the `dist` folder.
 
 ## Notes on Storage
 
-- Projects are stored in `localStorage`, which is great for small images and text.
-- Large files (high-res photos, big PDFs) may exceed browser storage limits.
-- For larger files, use the built-in Google Drive sync to keep the actual files in your Drive.
+- Projects are cached in `localStorage`, which is great for small images and text.
+- When Google Drive is connected, your Drive is the source of truth: the app
+  pulls the shared list on load, refocuses and every 60 seconds, merges it with
+  local changes, and pushes the result back after each change (debounced).
+- Large files (high-res photos, big PDFs) may exceed browser storage limits —
+  connect Drive to share them across devices.
 
 ## Google Drive Integration
 
-The site can upload each project to your Google Drive in a neat, labelled folder structure:
+Everything is stored in one shared folder in your Drive:
 
 ```
 Hobby Hub/
-  [Category] - [Project Title]/
+  projects.json          <- the shared project list (all devices read/write this)
+  [Category] - [Project Title]/   <- optional per-project export
     Images/
     Files/
     project-info.json
     README.md
 ```
+
+### How syncing works
+
+- On load (and when you refocus the tab), the app downloads `projects.json`,
+  merges it with your local data and, if anything differs, uploads the result.
+- Adds, edits and deletes are pushed automatically about 1.5 seconds after you
+  make them. Deletions are recorded as tombstones so they propagate instead of
+  coming back from other devices.
+- Merging is per project: the most recently edited version of a project wins,
+  so two devices can work offline and reconcile without losing data.
+- A status pill in the header shows `Loading…`, `Syncing…`, `Synced`,
+  `Sync error` or `Local only`.
+- The first time a device connects, it also imports any per-project folders
+  uploaded by the old "Sync to Drive" button (metadata plus images/files).
+
+### Using it on multiple devices
+
+1. Connect Google Drive on each device with the **same Client ID** and the
+   **same Google account** — the `drive.file` scope only exposes files created
+   by that Client ID, so a different one would see an empty folder.
+2. To avoid pasting the Client ID everywhere, set it once as an environment
+   variable (it is not a secret):
+   ```
+   VITE_GOOGLE_CLIENT_ID=xxxxxx.apps.googleusercontent.com
+   ```
+   For GitHub Pages, add a repository **secret** with that name — the deploy
+   workflow passes it to the build, so the Client ID is pre-filled on every
+   device.
+3. The app password must also be entered per device (it only unlocks the UI).
 
 ### Setup
 

@@ -84,6 +84,67 @@ body {
   color: var(--accent);
 }
 
+.sync-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sync-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+}
+
+.sync-synced {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.sync-synced .sync-status-dot {
+  background: var(--success);
+  box-shadow: 0 0 8px var(--success);
+}
+
+.sync-syncing,
+.sync-loading {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.sync-syncing .sync-status-dot,
+.sync-loading .sync-status-dot {
+  background: var(--accent);
+  animation: sync-pulse 1s ease-in-out infinite;
+}
+
+.sync-error {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.sync-error .sync-status-dot {
+  background: var(--danger);
+}
+
+@keyframes sync-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
 .drive-settings-container {
   max-width: 1200px;
   margin: 0 auto;

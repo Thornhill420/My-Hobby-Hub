@@ -3,11 +3,16 @@ const ACCESS_TOKEN_KEY = 'gd_access_token'
 const REFRESH_TOKEN_KEY = 'gd_refresh_token'
 const TOKEN_EXPIRY_KEY = 'gd_token_expiry'
 const ROOT_FOLDER_ID_KEY = 'gd_root_folder_id'
+const IMPORT_FLAG_KEY = 'gd_folder_import_done'
+
+const ROOT_FOLDER_NAME = 'Hobby Hub'
+const SHARED_FILE_NAME = 'projects.json'
 
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file'
 const DRIVE_API = 'https://www.googleapis.com/drive/v3'
 const UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3'
 const TOKEN_URL = 'https://oauth2.googleapis.com/token'
+const FOLDER_MIME = 'application/vnd.google-apps.folder'
 
 export function getStoredClientId() {
   return localStorage.getItem(CLIENT_ID_KEY)
@@ -32,36 +37,70 @@ export async function loadGoogleScripts() {
   })
 }
 
-export async function connectDrive(clientId, prompt = 'consent') {
-  if (!clientId.trim()) {
-    throw new Error('Please enter your Google Cloud Client ID')
+function storeTokenResponse(response) {
+  localStorage.setItem(ACCESS_TOKEN_KEY, response.access_token)
+  localStorage.setItem(
+    TOKEN_EXPIRY_KEY,
+    String(Date.now() + (response.expires_in || 3600) * 1000)
+  )
+  if (response.refresh_token) {
+    localStorage.setItem(REFRESH_TOKEN_KEY, response.refresh_token)
   }
+}
 
-  await loadGoogleScripts()
-  localStorage.setItem(CLIENT_ID_KEY, clientId.trim())
-
+function requestAccessToken(clientId, params) {
   return new Promise((resolve, reject) => {
     const tokenClient = window.google.accounts.oauth2.initTokenClient({
-      client_id: clientId.trim(),
+      client_id: clientId,
       scope: DRIVE_SCOPE,
       callback: (response) => {
         if (response.error) {
           reject(new Error(response.error_description || response.error))
           return
         }
-        localStorage.setItem(ACCESS_TOKEN_KEY, response.access_token)
-        localStorage.setItem(
-          TOKEN_EXPIRY_KEY,
-          String(Date.now() + response.expires_in * 1000)
-        )
-        if (response.refresh_token) {
-          localStorage.setItem(REFRESH_TOKEN_KEY, response.refresh_token)
-        }
         resolve(response)
       },
+      error_callback: (error) => {
+        const messages = {
+          popup_closed: 'The Google sign-in window was closed before finishing.',
+          popup_failed_to_open:
+            'The browser blocked the Google sign-in window. Allow popups for this site and try again.',
+          unknown: 'Google sign-in failed.',
+        }
+        reject(new Error(messages[error.type] || messages.unknown))
+      },
     })
-    tokenClient.requestAccessToken({ prompt })
+    tokenClient.requestAccessToken(params)
   })
+}
+
+export async function connectDrive(clientId) {
+  if (!clientId.trim()) {
+    throw new Error('Please enter your Google Cloud Client ID')
+  }
+
+  await loadGoogleScripts()
+  const id = clientId.trim()
+  localStorage.setItem(CLIENT_ID_KEY, id)
+
+  // Show the account chooser (people often have several Google accounts
+  // signed in) AND the consent screen in one popup — Google only issues the
+  // refresh token we need when consent is shown.
+  const first = await requestAccessToken(id, {
+    prompt: 'select_account consent',
+  })
+  storeTokenResponse(first)
+  if (first.refresh_token) return first
+
+  // Very old/odd responses can omit the refresh token; retry once.
+  try {
+    const second = await requestAccessToken(id, { prompt: 'consent' })
+    storeTokenResponse(second)
+    return second
+  } catch (error) {
+    console.warn('Connected without a refresh token', error)
+    return first
+  }
 }
 
 export function disconnectDrive() {
@@ -176,6 +215,28 @@ export async function findFileByName(name, folderId, mimeType = null) {
   return null
 }
 
+export async function listFilesInFolder(folderId, mimeType = null) {
+  const conditions = [`'${folderId}' in parents`, 'trashed=false']
+  if (mimeType) {
+    conditions.push(`mimeType='${mimeType}'`)
+  }
+  const query = conditions.join(' and ')
+
+  const data = await driveFetch(
+    `${DRIVE_API}/files?q=${encodeURIComponent(query)}&fields=files(id,name,mimeType)&spaces=drive&pageSize=1000`
+  )
+
+  return data.files || []
+}
+
+async function findRootFolderByName() {
+  const query = `name='${ROOT_FOLDER_NAME}' and mimeType='${FOLDER_MIME}' and 'root' in parents and trashed=false`
+  const data = await driveFetch(
+    `${DRIVE_API}/files?q=${encodeURIComponent(query)}&fields=files(id,name)&spaces=drive`
+  )
+  return data.files?.[0] || null
+}
+
 export async function findOrCreateFolder(name, parentFolderId) {
   const existing = await findFileByName(
     name,
@@ -196,18 +257,24 @@ export async function ensureRootFolder() {
       const data = await driveFetch(
         `${DRIVE_API}/files/${storedId}?fields=id,name,mimeType,trashed`
       )
-      if (
-        !data.trashed &&
-        data.mimeType === 'application/vnd.google-apps.folder'
-      ) {
+      if (!data.trashed && data.mimeType === FOLDER_MIME) {
         return storedId
       }
     } catch {
-      // fall through and create a new root folder
+      // fall through and look for the shared root folder
     }
+    localStorage.removeItem(ROOT_FOLDER_ID_KEY)
   }
 
-  const folder = await createFolder('Hobby Hub')
+  // Every device must share the same root folder, so look for an existing
+  // "Hobby Hub" folder before creating a new one.
+  const existing = await findRootFolderByName()
+  if (existing) {
+    localStorage.setItem(ROOT_FOLDER_ID_KEY, existing.id)
+    return existing.id
+  }
+
+  const folder = await createFolder(ROOT_FOLDER_NAME)
   localStorage.setItem(ROOT_FOLDER_ID_KEY, folder.id)
   return folder.id
 }
@@ -378,6 +445,139 @@ export async function uploadTextFile(
   }
 
   return uploadFile(metadata, blob)
+}
+
+async function downloadRequest(fileId) {
+  const token = await getValidAccessToken()
+  const res = await fetch(`${DRIVE_API}/files/${fileId}?alt=media`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  if (!res.ok) {
+    let message = `Failed to download file (${res.status})`
+    try {
+      const data = await res.json()
+      message = data.error?.message || message
+    } catch {
+      // ignore parse errors
+    }
+    throw new Error(message)
+  }
+
+  return res
+}
+
+export async function downloadFileText(fileId) {
+  const res = await downloadRequest(fileId)
+  return res.text()
+}
+
+export async function downloadFileDataUrl(fileId, mimeType) {
+  const res = await downloadRequest(fileId)
+  const blob = await res.blob()
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = () => reject(new Error('Failed to read downloaded file'))
+    reader.readAsDataURL(
+      blob.type ? blob : new Blob([blob], { type: mimeType })
+    )
+  })
+}
+
+export function isFolderImportDone() {
+  return localStorage.getItem(IMPORT_FLAG_KEY) === 'true'
+}
+
+export function markFolderImportDone() {
+  localStorage.setItem(IMPORT_FLAG_KEY, 'true')
+}
+
+// The shared project list every device reads from and writes to.
+export async function loadSharedState() {
+  const rootId = await ensureRootFolder()
+  const file = await findFileByName(SHARED_FILE_NAME, rootId, 'application/json')
+  if (!file) return null
+
+  try {
+    const parsed = JSON.parse(await downloadFileText(file.id))
+    return {
+      projects: Array.isArray(parsed.projects) ? parsed.projects : [],
+      deleted: parsed.deleted && typeof parsed.deleted === 'object' ? parsed.deleted : {},
+    }
+  } catch (error) {
+    console.warn('Could not read shared projects file, treating as empty', error)
+    return null
+  }
+}
+
+export async function saveSharedState(state) {
+  const rootId = await ensureRootFolder()
+  const content = JSON.stringify(
+    {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      projects: state.projects || [],
+      deleted: state.deleted || {},
+    },
+    null,
+    2
+  )
+  return uploadTextFile(SHARED_FILE_NAME, content, rootId, 'application/json')
+}
+
+async function downloadFolderContents(folderId) {
+  const files = await listFilesInFolder(folderId)
+  const contents = []
+  for (const file of files) {
+    try {
+      contents.push({
+        name: file.name,
+        type: file.mimeType,
+        dataUrl: await downloadFileDataUrl(file.id, file.mimeType),
+      })
+    } catch (error) {
+      console.warn(`Skipping "${file.name}" during Drive import`, error)
+    }
+  }
+  return contents
+}
+
+// One-time migration: rebuild projects from per-project folders that were
+// uploaded with the old "Sync to Drive" button (device-local data only).
+export async function importProjectsFromDrive() {
+  const rootId = await ensureRootFolder()
+  const folders = await listFilesInFolder(rootId, FOLDER_MIME)
+  const projects = []
+
+  for (const folder of folders) {
+    try {
+      const infoFile = await findFileByName(
+        'project-info.json',
+        folder.id,
+        'application/json'
+      )
+      if (!infoFile) continue
+
+      const info = JSON.parse(await downloadFileText(infoFile.id))
+      if (!info?.id) continue
+
+      const imagesFolder = await findFileByName('Images', folder.id, FOLDER_MIME)
+      const filesFolder = await findFileByName('Files', folder.id, FOLDER_MIME)
+
+      projects.push({
+        ...info,
+        images: imagesFolder ? await downloadFolderContents(imagesFolder.id) : [],
+        files: filesFolder ? await downloadFolderContents(filesFolder.id) : [],
+        driveFolderId: folder.id,
+        driveFolderName: folder.name,
+      })
+    } catch (error) {
+      console.warn(`Skipping Drive folder "${folder.name}" during import`, error)
+    }
+  }
+
+  return projects
 }
 
 function generateReadme(project) {
