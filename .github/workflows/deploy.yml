@@ -30,8 +30,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
+      - name: Build with password secret
         run: npm run build
+        env:
+          REACT_APP_PASSWORD: ${{ secrets.REACT_APP_PASSWORD }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
