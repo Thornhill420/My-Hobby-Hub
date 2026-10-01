@@ -43,7 +43,7 @@ The build output will be in the `dist` folder.
 
 ## Google Drive Integration
 
-The site can upload each project to your Google Drive in a neat, labelled structure:
+The site can upload each project to your Google Drive in a neat, labelled folder structure:
 
 ```
 Hobby Hub/
@@ -65,6 +65,7 @@ Hobby Hub/
 7. Under **Authorized JavaScript origins**, add:
    ```
    http://localhost:5173
+   https://thornhill420.github.io
    ```
 8. Copy the **Client ID**.
 
@@ -79,3 +80,27 @@ When adding or editing a project, you can tick **Also upload this project to Goo
 ### Security note
 
 This uses an OAuth **Client ID** (not an API key) and only requests the `drive.file` scope, which limits access to files created by this app. The refresh token is stored in your browser's `localStorage`, so only use this on devices you trust.
+
+## Password Protection
+
+The site is password-protected to prevent casual access.
+
+### Setting the password
+
+1. Create a `.env` file in the project root:
+   ```
+   VITE_APP_PASSWORD=your-secret-password
+   ```
+2. Add this line to `.gitignore` (already done):
+   ```
+   .env
+   ```
+3. For GitHub Pages deployment, set a repository secret:
+   - Name: `VITE_APP_PASSWORD`
+   - Value: your-secret-password
+
+The password is never visible in the source code or built files.
+
+### Default password
+
+If no password is set, the default is `hobby2026` (for development only).
