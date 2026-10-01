@@ -18,8 +18,19 @@ const UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3'
 const TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const FOLDER_MIME = 'application/vnd.google-apps.folder'
 
+// The single Client ID every device must use (the drive.file scope only
+// shares files created by the same client). Env var wins so forks of this
+// repo can supply their own.
+export const CANONICAL_CLIENT_ID =
+  import.meta.env.VITE_GOOGLE_CLIENT_ID ||
+  '752853345647-fcjd2532kot2j0ubd8v86c04rm36bmtf.apps.googleusercontent.com'
+
 export function getStoredClientId() {
   return localStorage.getItem(CLIENT_ID_KEY)
+}
+
+export function setStoredClientId(clientId) {
+  localStorage.setItem(CLIENT_ID_KEY, clientId)
 }
 
 export function getStoredEmail() {
@@ -113,7 +124,7 @@ export async function connectDrive(clientId, { loginHint = '' } = {}) {
 
   await loadGoogleScripts()
   const id = clientId.trim()
-  localStorage.setItem(CLIENT_ID_KEY, id)
+  setStoredClientId(id)
 
   const hint = loginHint.trim()
   if (hint) {

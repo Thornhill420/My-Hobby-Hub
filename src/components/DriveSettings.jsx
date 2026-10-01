@@ -1,18 +1,16 @@
 import React, { useState } from 'react'
 import {
+  CANONICAL_CLIENT_ID,
   connectDrive,
   disconnectDrive,
   getStoredClientId,
   getStoredEmail,
   getStoredLoginHint,
   isDriveConnected,
+  setStoredClientId,
 } from '../utils/googleDrive.js'
 
-// Client IDs are public by design (they appear in every auth request), so
-// baking the project's own ID in just pre-fills the field on new devices.
-const DEFAULT_CLIENT_ID =
-  import.meta.env.VITE_GOOGLE_CLIENT_ID ||
-  '752853345647-fcjd2532kot2j0ubd8v86c04rm36bmtf.apps.googleusercontent.com'
+const DEFAULT_CLIENT_ID = CANONICAL_CLIENT_ID
 
 function connectErrorHint(message) {
   const m = message.toLowerCase()
@@ -52,7 +50,19 @@ export default function DriveSettings({ onClose, onStatusChange }) {
       setConnected(true)
       onStatusChange?.(true)
     } catch (err) {
-      setError(err.message)
+      const message = err.message || 'Connect failed'
+      const lower = message.toLowerCase()
+      if (lower.includes('invalid_client') || lower.includes('client was not found')) {
+        // A stale or mistyped Client ID saved on this device — swap in the
+        // known-good one so the next tap of Connect just works.
+        setStoredClientId(CANONICAL_CLIENT_ID)
+        setClientId(CANONICAL_CLIENT_ID)
+        setError(
+          "That Client ID wasn't recognized — the correct one is now filled in. Tap Connect Google Drive again."
+        )
+      } else {
+        setError(message)
+      }
     } finally {
       setLoading(false)
     }
