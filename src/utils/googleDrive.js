@@ -4,11 +4,15 @@ const REFRESH_TOKEN_KEY = 'gd_refresh_token'
 const TOKEN_EXPIRY_KEY = 'gd_token_expiry'
 const ROOT_FOLDER_ID_KEY = 'gd_root_folder_id'
 const IMPORT_FLAG_KEY = 'gd_folder_import_done'
+const LOGIN_HINT_KEY = 'gd_login_hint'
+const EMAIL_KEY = 'gd_email'
 
 const ROOT_FOLDER_NAME = 'Hobby Hub'
 const SHARED_FILE_NAME = 'projects.json'
 
-const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file'
+// openid + email let us show which Google account is connected
+const DRIVE_SCOPE =
+  'openid email https://www.googleapis.com/auth/drive.file'
 const DRIVE_API = 'https://www.googleapis.com/drive/v3'
 const UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3'
 const TOKEN_URL = 'https://oauth2.googleapis.com/token'
@@ -16,6 +20,10 @@ const FOLDER_MIME = 'application/vnd.google-apps.folder'
 
 export function getStoredClientId() {
   return localStorage.getItem(CLIENT_ID_KEY)
+}
+
+export function getStoredEmail() {
+  return localStorage.getItem(EMAIL_KEY) || ''
 }
 
 export function isDriveConnected() {
@@ -37,6 +45,18 @@ export async function loadGoogleScripts() {
   })
 }
 
+function emailFromIdToken(idToken) {
+  try {
+    const payload = idToken.split('.')[1]
+      .replace(/-/g, '+')
+      .replace(/_/g, '/')
+    const padded = payload + '='.repeat((4 - (payload.length % 4)) % 4)
+    return JSON.parse(atob(padded)).email || ''
+  } catch {
+    return ''
+  }
+}
+
 function storeTokenResponse(response) {
   localStorage.setItem(ACCESS_TOKEN_KEY, response.access_token)
   localStorage.setItem(
@@ -45,6 +65,10 @@ function storeTokenResponse(response) {
   )
   if (response.refresh_token) {
     localStorage.setItem(REFRESH_TOKEN_KEY, response.refresh_token)
+  }
+  if (response.id_token) {
+    const email = emailFromIdToken(response.id_token)
+    if (email) localStorage.setItem(EMAIL_KEY, email)
   }
 }
 
@@ -74,7 +98,11 @@ function requestAccessToken(clientId, params) {
   })
 }
 
-export async function connectDrive(clientId) {
+export function getStoredLoginHint() {
+  return localStorage.getItem(LOGIN_HINT_KEY) || ''
+}
+
+export async function connectDrive(clientId, { loginHint = '' } = {}) {
   if (!clientId.trim()) {
     throw new Error('Please enter your Google Cloud Client ID')
   }
@@ -83,18 +111,28 @@ export async function connectDrive(clientId) {
   const id = clientId.trim()
   localStorage.setItem(CLIENT_ID_KEY, id)
 
+  const hint = loginHint.trim()
+  if (hint) {
+    localStorage.setItem(LOGIN_HINT_KEY, hint)
+  }
+
   // Show the account chooser (people often have several Google accounts
   // signed in) AND the consent screen in one popup — Google only issues the
-  // refresh token we need when consent is shown.
+  // refresh token we need when consent is shown. login_hint preselects the
+  // account the user typed.
   const first = await requestAccessToken(id, {
     prompt: 'select_account consent',
+    ...(hint ? { login_hint: hint } : {}),
   })
   storeTokenResponse(first)
   if (first.refresh_token) return first
 
   // Very old/odd responses can omit the refresh token; retry once.
   try {
-    const second = await requestAccessToken(id, { prompt: 'consent' })
+    const second = await requestAccessToken(id, {
+      prompt: 'consent',
+      ...(hint ? { login_hint: hint } : {}),
+    })
     storeTokenResponse(second)
     return second
   } catch (error) {
@@ -108,6 +146,7 @@ export function disconnectDrive() {
   localStorage.removeItem(REFRESH_TOKEN_KEY)
   localStorage.removeItem(TOKEN_EXPIRY_KEY)
   localStorage.removeItem(ROOT_FOLDER_ID_KEY)
+  localStorage.removeItem(EMAIL_KEY)
 }
 
 export async function getValidAccessToken() {
@@ -138,6 +177,20 @@ export async function getValidAccessToken() {
   })
 
   if (!res.ok) {
+    let detail = ''
+    try {
+      const data = await res.json()
+      detail = `${data.error || ''} ${data.error_description || ''}`
+    } catch {
+      // ignore parse errors
+    }
+    if (detail.includes('invalid_grant')) {
+      // Google expires refresh tokens for apps in "Testing" status after
+      // 7 days, and revocations land here too.
+      throw new Error(
+        'Your Google sign-in has expired. Open ☁️ Drive settings, click Disconnect, then Connect again.'
+      )
+    }
     throw new Error('Failed to refresh Google Drive access token')
   }
 

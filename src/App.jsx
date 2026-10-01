@@ -351,6 +351,28 @@ export default function App() {
         <p>A place for all your 3D printing, Arduino, ESP32, apps and more.</p>
       </header>
 
+      {driveConnected && syncStatus === 'error' && (
+        <div className="sync-error-bar" role="alert">
+          <span className="sync-error-text">
+            ⚠️ Sync error: {syncError || 'unknown error'}
+          </span>
+          <span className="sync-error-actions">
+            <button
+              className="btn btn-small btn-secondary"
+              onClick={() => syncWithDrive({ allowImport: true })}
+            >
+              Retry
+            </button>
+            <button
+              className="btn btn-small btn-secondary"
+              onClick={() => setShowDriveSettings(true)}
+            >
+              Drive settings
+            </button>
+          </span>
+        </div>
+      )}
+
       {showDriveSettings && (
         <div className="drive-settings-container">
           <DriveSettings

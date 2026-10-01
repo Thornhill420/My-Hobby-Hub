@@ -3,6 +3,8 @@ import {
   connectDrive,
   disconnectDrive,
   getStoredClientId,
+  getStoredEmail,
+  getStoredLoginHint,
   isDriveConnected,
 } from '../utils/googleDrive.js'
 
@@ -32,6 +34,7 @@ export default function DriveSettings({ onClose, onStatusChange }) {
   const [clientId, setClientId] = useState(
     getStoredClientId() || DEFAULT_CLIENT_ID || ''
   )
+  const [loginHint, setLoginHint] = useState(getStoredLoginHint())
   const [connected, setConnected] = useState(isDriveConnected())
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -41,7 +44,7 @@ export default function DriveSettings({ onClose, onStatusChange }) {
     setError('')
     setLoading(true)
     try {
-      await connectDrive(clientId)
+      await connectDrive(clientId, { loginHint })
       setConnected(true)
       onStatusChange?.(true)
     } catch (err) {
@@ -71,6 +74,12 @@ export default function DriveSettings({ onClose, onStatusChange }) {
           <p>
             <span className="drive-status-dot connected" /> Connected to Google
             Drive
+            {getStoredEmail() ? (
+              <>
+                {' '}
+                as <strong>{getStoredEmail()}</strong>
+              </>
+            ) : null}
           </p>
           <p className="drive-hint">
             Your project list lives in <strong>Hobby Hub/projects.json</strong>{' '}
@@ -97,6 +106,16 @@ export default function DriveSettings({ onClose, onStatusChange }) {
             onChange={(e) => setClientId(e.target.value)}
             placeholder="xxxxxx.apps.googleusercontent.com"
           />
+          <div className="form-group">
+            <label htmlFor="login-hint">Google account email (optional)</label>
+            <input
+              id="login-hint"
+              type="email"
+              value={loginHint}
+              onChange={(e) => setLoginHint(e.target.value)}
+              placeholder="you@gmail.com"
+            />
+          </div>
           {error && <div className="form-error">{error}</div>}
           {error && connectErrorHint(error) && (
             <div className="drive-hint">{connectErrorHint(error)}</div>
@@ -109,8 +128,8 @@ export default function DriveSettings({ onClose, onStatusChange }) {
             {loading ? 'Connecting…' : 'Connect Google Drive'}
           </button>
           <p className="drive-hint">
-            Google will ask which account to use — pick the account you want
-            your projects stored in.
+            Google will ask which account to use — fill in the email above and
+            it will be preselected, or pick your account in the list.
           </p>
 
           <button
