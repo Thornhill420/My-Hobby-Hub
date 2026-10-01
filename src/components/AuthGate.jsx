@@ -33,7 +33,6 @@ export default function AuthGate({ onAuthenticated }) {
             Unlock
           </button>
         </form>
-        <p className="auth-hint">Password: <code>hobby2026</code></p>
       </div>
     </div>
   )
