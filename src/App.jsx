@@ -5,6 +5,8 @@ import ProjectDetail from './components/ProjectDetail.jsx'
 import DriveSettings from './components/DriveSettings.jsx'
 import { v4 as uuidv4 } from 'uuid'
 import { isDriveConnected, syncProjectToDrive } from './utils/googleDrive.js'
+import AuthGate from './components/AuthGate.jsx'
+import { checkPassword, logout } from './utils/auth.js'
 
 const STORAGE_KEY = 'hobby-projects'
 
@@ -28,6 +30,7 @@ function saveProjects(projects) {
 }
 
 export default function App() {
+  const [authenticated, setAuthenticated] = useState(checkPassword())
   const [projects, setProjects] = useState(loadProjects)
   const [selectedProjectId, setSelectedProjectId] = useState(null)
   const [isFormOpen, setIsFormOpen] = useState(false)
@@ -130,6 +133,10 @@ export default function App() {
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId) || null
 
+  if (!authenticated) {
+    return <AuthGate onAuthenticated={() => setAuthenticated(true)} />
+  }
+
   return (
     <div className="app">
       <header className="app-header">
@@ -143,6 +150,9 @@ export default function App() {
               onClick={() => setShowDriveSettings((prev) => !prev)}
             >
               {driveConnected ? '☁️ Drive Connected' : '☁️ Connect Drive'}
+            </button>
+            <button className="btn btn-secondary btn-small" onClick={() => { logout(); setAuthenticated(false) }} style={{marginRight: '0.5rem'}}>
+              Lock
             </button>
             <button className="btn btn-primary" onClick={openAddForm}>
               + Add New Project
