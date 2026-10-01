@@ -5,6 +5,7 @@ import {
   getStoredClientId,
   getStoredEmail,
   getStoredLoginHint,
+  hasStoredRefreshToken,
   isDriveConnected,
 } from '../utils/googleDrive.js'
 
@@ -89,6 +90,17 @@ export default function DriveSettings({ onClose, onStatusChange }) {
           <p className="drive-hint">
             To share with another device, connect there with the{' '}
             <strong>same Client ID</strong> and the same Google account.
+          </p>
+          <p className="drive-hint">
+            Session renewal:{' '}
+            {hasStoredRefreshToken() ? (
+              <strong>automatic — stays signed in</strong>
+            ) : (
+              <strong>
+                not available — this session lasts about an hour, then you must
+                reconnect
+              </strong>
+            )}
           </p>
           <button className="btn btn-danger" onClick={handleDisconnect}>
             Disconnect

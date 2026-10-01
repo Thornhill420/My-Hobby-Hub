@@ -26,6 +26,10 @@ export function getStoredEmail() {
   return localStorage.getItem(EMAIL_KEY) || ''
 }
 
+export function hasStoredRefreshToken() {
+  return Boolean(localStorage.getItem(REFRESH_TOKEN_KEY))
+}
+
 export function isDriveConnected() {
   return Boolean(
     localStorage.getItem(ACCESS_TOKEN_KEY) ||
@@ -161,7 +165,9 @@ export async function getValidAccessToken() {
   const clientId = localStorage.getItem(CLIENT_ID_KEY)
 
   if (!refreshToken || !clientId) {
-    throw new Error('Not connected to Google Drive')
+    throw new Error(
+      'Your Google session has expired and cannot renew itself. Open ☁️ Drive settings, click Disconnect, then Connect again.'
+    )
   }
 
   const body = new URLSearchParams({
