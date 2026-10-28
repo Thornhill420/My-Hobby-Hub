@@ -462,7 +462,7 @@ async function uploadFile(metadata, blob) {
 async function updateFileContent(fileId, blob, mimeType) {
   const token = await getValidAccessToken()
   const res = await fetch(`${UPLOAD_API}/files/${fileId}?uploadType=media`, {
-    method: 'POST',
+    method: 'PATCH',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': mimeType || 'application/octet-stream',
